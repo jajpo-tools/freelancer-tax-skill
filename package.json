@@ -1,0 +1,13 @@
+{
+  "name": "freelancer-tax-skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agent Skill and Claude Code plugin: US federal tax estimates for freelancers and 1099 contractors.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

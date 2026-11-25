@@ -1,0 +1,13 @@
+{
+  "name": "freelancer-tax",
+  "version": "1.0.0",
+  "description": "US federal tax estimates for freelancers and 1099 contractors (2026, 2027): self-employment tax, income tax with QBI, set-aside percentage, quarterly estimated taxes, IRS figures and deadlines.",
+  "author": {
+    "name": "JAJPO",
+    "url": "https://jajpo.com/"
+  },
+  "homepage": "https://github.com/jajpo-tools/freelancer-tax-skill",
+  "repository": "https://github.com/jajpo-tools/freelancer-tax-skill",
+  "license": "MIT",
+  "keywords": ["tax", "freelancer", "1099", "self-employment-tax", "estimated-tax", "irs", "skills"]
+}

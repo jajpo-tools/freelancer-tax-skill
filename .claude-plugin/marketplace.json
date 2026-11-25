@@ -1,0 +1,18 @@
+{
+  "name": "jajpo-tools",
+  "description": "Free tax tools for US freelancers from JAJPO",
+  "owner": {
+    "name": "JAJPO",
+    "url": "https://jajpo.com/"
+  },
+  "plugins": [
+    {
+      "name": "freelancer-tax",
+      "source": "./",
+      "description": "US federal tax estimates for freelancers and 1099 contractors (2026, 2027): self-employment tax, income tax with QBI, set-aside percentage, quarterly estimated taxes, IRS figures and deadlines.",
+      "version": "1.0.0",
+      "category": "finance",
+      "tags": ["tax", "freelancer", "1099", "self-employment-tax", "irs"]
+    }
+  ]
+}
