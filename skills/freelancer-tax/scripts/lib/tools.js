@@ -48,22 +48,22 @@ function coreSources(year) {
 }
 
 // ---- input schemas ----
-const YEAR = { type: 'integer', enum: [2026, 2027], description: 'Tax year. Defaults to the current year (2026 or 2027).' };
-const STATUS = { type: 'string', enum: ['single', 'mfj', 'mfs', 'hoh'], description: 'Filing status: single, mfj (married filing jointly), mfs (married filing separately), hoh (head of household). Default single.' };
-const DOLLARS = (description) => ({ type: 'number', minimum: 0, description });
+const YEAR = { type: 'integer', enum: [2026, 2027], description: 'Tax year, 2026 or 2027. If omitted: the current calendar year when supported, otherwise the nearest supported year.' };
+const STATUS = { type: 'string', enum: ['single', 'mfj', 'mfs', 'hoh'], default: 'single', description: 'Filing status: "single", "mfj" (married filing jointly), "mfs" (married filing separately) or "hoh" (head of household). Default "single".' };
+const DOLLARS = (description, example) => ({ type: 'number', minimum: 0, description: description + (example !== undefined ? ` In US dollars, e.g. ${example}.` : ' In US dollars.') });
 
 const ESTIMATE_PROPS = {
   year: YEAR,
   filingStatus: STATUS,
-  grossIncome: DOLLARS('Self-employment / 1099 income for the year, before expenses.'),
-  businessExpenses: DOLLARS('Deductible business expenses (Schedule C).'),
-  w2Wages: DOLLARS('The person\'s own W-2 wages, if any. They use up the Social Security wage base first.'),
-  spouseW2Wages: DOLLARS('Spouse\'s W-2 wages; only used with mfj.'),
-  otherIncome: DOLLARS('Other taxable income (interest, etc.).'),
-  isSpecifiedService: { type: 'boolean', description: 'True for a specified service business (consulting, law, health, accounting, financial services, performing arts...), which matters for the QBI deduction at high incomes.' },
-  qualifiedTips: DOLLARS('Tips reported on a Form 1099 that qualify for the Section 224 deduction.'),
-  businessAdjustments: DOLLARS('Self-employed health insurance and retirement contributions (lower income tax and QBI, not SE tax).'),
-  stateTaxRate: { type: 'number', minimum: 0, maximum: 0.2, description: 'Optional flat state income tax rate as a decimal (0.05 = 5%), applied to net profit. Reported separately.' }
+  grossIncome: DOLLARS('Total self-employment / 1099 income for the year, before expenses (required).', 60000),
+  businessExpenses: Object.assign(DOLLARS('Deductible business expenses for the year (Schedule C). Default 0.', 8000), { default: 0 }),
+  w2Wages: Object.assign(DOLLARS('The person\'s own W-2 wages from a job, if any. They raise the income tax bracket and use up the Social Security wage base first. Default 0.', 50000), { default: 0 }),
+  spouseW2Wages: Object.assign(DOLLARS('Spouse\'s W-2 wages. Only used when filingStatus is "mfj"; ignored otherwise. Default 0.', 40000), { default: 0 }),
+  otherIncome: Object.assign(DOLLARS('Other taxable income such as interest. Default 0.', 500), { default: 0 }),
+  isSpecifiedService: { type: 'boolean', default: false, description: 'true for a specified service trade or business (consulting, law, health, accounting, financial services, performing arts, athletics). Only matters for the QBI deduction when taxable income is above about $201,750 single / $403,500 joint (2026). Default false.' },
+  qualifiedTips: Object.assign(DOLLARS('Tips reported on a Form 1099 that qualify for the Section 224 tips deduction (lowers income tax, not SE tax). Default 0.', 3000), { default: 0 }),
+  businessAdjustments: Object.assign(DOLLARS('Self-employed health insurance premiums plus retirement contributions (Solo 401(k), SEP-IRA). They lower income tax and the QBI amount, not SE tax. Default 0.', 6000), { default: 0 }),
+  stateTaxRate: { type: 'number', minimum: 0, maximum: 0.2, default: 0, description: 'Optional flat state income tax rate as a decimal, applied to net profit and reported separately (never changes the federal figures). e.g. 0.05 for 5%. Default 0 (state tax not included).' }
 };
 
 const TOPICS = {
@@ -215,7 +215,7 @@ const TOOLS = [
   {
     name: 'estimate_1099_tax',
     title: 'Estimate 1099 / self-employment taxes',
-    description: 'Estimate US federal tax for a freelancer, gig worker or 1099 contractor (tax year 2026 or 2027): self-employment tax (Schedule SE), income tax after the standard and QBI deductions, Additional Medicare Tax, the share of each payment to set aside, and the quarterly amount. Handles W-2 wages on the side, a spouse\'s wages, business losses and qualified tips. Federal only; state tax only as an optional flat rate.',
+    description: 'Estimate the total US federal tax a freelancer, gig worker or 1099 contractor owes for tax year 2026 or 2027. Use it for questions like "how much tax will I owe on my 1099 income?" or "what share of each payment should I set aside?". It works through Schedule C net profit, self-employment tax (Schedule SE), the deduction for half of it, the standard deduction, the QBI deduction (Form 8995), the income tax brackets and the 0.9% Additional Medicare Tax. It handles a W-2 job on the side (reporting only the tax the 1099 work adds), a spouse\'s wages, business losses and qualified tips. Federal only; state tax only as an optional flat rate. Use quarterly_estimated_tax instead to plan payments against the IRS safe harbor rules, and self_employment_tax for SE tax alone. Returns a plain-text breakdown plus structuredContent with every figure in dollars (set-aside and marginal rates as decimals), the IRS sources and a link to a free calculator that shows each step. Read-only, no network access.',
     inputSchema: { type: 'object', properties: ESTIMATE_PROPS, required: ['grossIncome'], additionalProperties: false },
     annotations: READ_ONLY,
     run: estimate
@@ -223,15 +223,15 @@ const TOOLS = [
   {
     name: 'quarterly_estimated_tax',
     title: 'Plan quarterly estimated tax payments',
-    description: 'Work out US federal quarterly estimated tax payments (Form 1040-ES) for a self-employed person: the least to pay to avoid the underpayment penalty under the 90% / 100% / 110% safe harbor rules, what to pay on each due date, missed installments, and W-2 withholding.',
+    description: 'Plan US federal quarterly estimated tax payments (Form 1040-ES) for a self-employed person for tax year 2026 or 2027. Use it when the user asks what to pay by a due date (e.g. January 15), how to avoid the underpayment penalty, or whether they missed an installment. Applies the IRS safe harbor rules: pay the smaller of 90% of this year\'s tax or 100% of last year\'s (110% if last year\'s AGI was over $150,000, $75,000 if married filing separately); no payments are needed when less than $1,000 is owed after withholding or there was no tax last year. W-2 withholding counts as paid evenly through the year, and payments already made are assumed on time. Takes the same income inputs as estimate_1099_tax plus withholding, payments made and last year\'s tax. Returns the least to pay to avoid the penalty, the amount to owe nothing at filing, a per-due-date schedule (status passed / next / upcoming) and any earlier shortfall, as text plus structuredContent in dollars. Read-only, no network access.',
     inputSchema: {
       type: 'object',
       properties: Object.assign({}, ESTIMATE_PROPS, {
-        withholding: DOLLARS('Federal income tax withheld from W-2 pay this year.'),
-        estimatedPaid: DOLLARS('Estimated tax payments already made this year.'),
-        priorYearTax: DOLLARS('Last year\'s total federal tax (Form 1040 line 24), for the prior-year safe harbor. Leave out if unknown.'),
-        priorYearAgi: DOLLARS('Last year\'s AGI; over $150,000 ($75,000 if married filing separately) makes the safe harbor 110%.'),
-        asOf: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Date to plan from, YYYY-MM-DD. Defaults to today.' }
+        withholding: Object.assign(DOLLARS('Federal income tax withheld from W-2 pay this year. Default 0.', 4000), { default: 0 }),
+        estimatedPaid: Object.assign(DOLLARS('Estimated tax payments already made for this tax year. Default 0.', 2000), { default: 0 }),
+        priorYearTax: DOLLARS('Last year\'s total federal tax (Form 1040 line 24), for the 100% / 110% prior-year safe harbor. Omit if unknown; then only the 90% current-year rule is used.', 8000),
+        priorYearAgi: DOLLARS('Last year\'s adjusted gross income. Over $150,000 ($75,000 if married filing separately) makes the prior-year safe harbor 110%. Omit if unknown.', 70000),
+        asOf: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Date to plan from, as YYYY-MM-DD, e.g. "2026-11-28". Due dates before it count as passed. Defaults to today.' }
       }),
       required: ['grossIncome'],
       additionalProperties: false
@@ -242,10 +242,14 @@ const TOOLS = [
   {
     name: 'self_employment_tax',
     title: 'Self-employment tax only',
-    description: 'Self-employment tax (Social Security and Medicare, Schedule SE) on a net profit, with the wage base shared with W-2 wages, and the deductible half.',
+    description: 'Compute US self-employment tax only (Social Security and Medicare, Schedule SE) on a net profit for tax year 2026 or 2027, without income tax. Use it when the user asks about SE tax or "the 15.3% tax" specifically; use estimate_1099_tax for the total federal tax. Rules applied: net earnings are 92.35% of net profit; no SE tax when net earnings are under $400 (about $433 of profit); 12.4% Social Security up to the wage base ($184,500 for 2026, $192,300 for 2027), which the person\'s own W-2 wages use up first; 2.9% Medicare on all net earnings; half of the total is deductible from income. Returns net earnings, the Social Security part, the Medicare part, the total and the deductible half, as text plus structuredContent in dollars. Read-only, no network access.',
     inputSchema: {
       type: 'object',
-      properties: { netProfit: { type: 'number', description: 'Net profit from self-employment (Schedule C line 31).' }, w2Wages: DOLLARS('W-2 Social Security wages, if any.'), year: YEAR },
+      properties: {
+        netProfit: { type: 'number', description: 'Net profit from self-employment for the year (Schedule C line 31), in US dollars, e.g. 52000. A loss (zero or negative) gives no SE tax.' },
+        w2Wages: Object.assign(DOLLARS('The person\'s own W-2 Social Security wages (Form W-2 box 3), which use up the Social Security wage base first. Default 0.', 150000), { default: 0 }),
+        year: YEAR
+      },
       required: ['netProfit'],
       additionalProperties: false
     },
@@ -255,10 +259,13 @@ const TOOLS = [
   {
     name: 'tax_figures',
     title: 'Look up US federal tax figures',
-    description: 'Official 2026 or 2027 US federal tax figures with their IRS/SSA sources: tax brackets, standard deduction, self-employment tax, Additional Medicare Tax, QBI deduction, qualified tips deduction, estimated tax rules, 1099-NEC and 1099-K thresholds, business mileage rate, Solo 401(k)/SEP-IRA limits, home office rates, premium tax credit table.',
+    description: 'Look up official 2026 or 2027 US federal tax figures, each section with its IRS or SSA source. Use it when the user wants a specific number rather than a calculation, e.g. "the 2027 standard deduction", "the 1099-NEC threshold", "the IRS mileage rate" or "Solo 401(k) limits". Topics: brackets, standard_deduction, self_employment, additional_medicare, qbi, qualified_tips, estimated_tax (due dates and safe harbor percentages), 1099_thresholds (1099-NEC and 1099-K), mileage, retirement (Solo 401(k) / SEP-IRA), home_office, premium_tax_credit, or all. Returns the section as JSON (amounts in US dollars, rates as decimals, "max": null meaning no upper limit, dates as YYYY-MM-DD) with its sources, plus a link to a related free calculator. Figures the IRS has not published yet (for example the 2027 mileage rate) are left empty rather than guessed. Read-only, no network access.',
     inputSchema: {
       type: 'object',
-      properties: { topic: { type: 'string', enum: Object.keys(TOPICS), description: 'Which figures. "all" returns every section.' }, year: YEAR },
+      properties: {
+        topic: { type: 'string', enum: Object.keys(TOPICS), description: 'Which section of figures to return, e.g. "1099_thresholds" or "retirement". "all" returns every section (a large response; prefer a specific topic).' },
+        year: YEAR
+      },
       required: ['topic'],
       additionalProperties: false
     },
@@ -268,12 +275,12 @@ const TOOLS = [
   {
     name: 'tax_deadlines',
     title: 'Upcoming federal tax dates for freelancers',
-    description: 'Upcoming US federal tax dates for the self-employed: quarterly estimated tax due dates, the January exception, the Form 1099-NEC deadline and the return due date.',
+    description: 'List upcoming US federal tax dates for freelancers and the self-employed, in date order: quarterly estimated tax due dates, the January exception (file and pay in full to skip the January installment), the Form 1099-NEC deadline for payers and the tax return due date. Use it when the user asks when the next payment or filing is due. Weekend and holiday shifts are already applied; 2027 estimated tax dates are marked provisional until the IRS publishes the 2027 Form 1040-ES. Returns each date (YYYY-MM-DD) with what is due and a related link, as text plus structuredContent. For how much to pay, use quarterly_estimated_tax. Read-only, no network access.',
     inputSchema: {
       type: 'object',
       properties: {
-        from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'List dates on or after this day (YYYY-MM-DD). Defaults to today.' },
-        limit: { type: 'integer', minimum: 1, maximum: 20, description: 'How many dates (default 8).' }
+        from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Only list dates on or after this day, as YYYY-MM-DD, e.g. "2026-12-01". Defaults to today.' },
+        limit: { type: 'integer', minimum: 1, maximum: 20, default: 8, description: 'How many dates to return, from 1 to 20. Default 8.' }
       },
       additionalProperties: false
     },
